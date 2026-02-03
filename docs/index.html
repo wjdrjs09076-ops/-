@@ -4,9 +4,42 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>기업 멀티플 비교</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>사이트 생성 성공 🎉</h1>
-  <p>이 화면이 보이면 GitHub Pages 연결은 정상입니다.</p>
+  <main class="container">
+    <h1>기업 멀티플 비교</h1>
+    <p>기업명을 입력하면 주요 밸류에이션 지표를 보여줍니다.</p>
+
+    <div class="search">
+      <input id="q" placeholder="예: AAPL, MSFT, NVDA">
+      <button id="btn">검색</button>
+    </div>
+
+    <section id="result" class="card hidden">
+      <h2 id="company"></h2>
+
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="label">PER</div>
+          <div class="value" id="per"></div>
+        </div>
+        <div class="metric">
+          <div class="label">PBR</div>
+          <div class="value" id="pbr"></div>
+        </div>
+        <div class="metric">
+          <div class="label">EV / EBITDA</div>
+          <div class="value" id="ev"></div>
+        </div>
+        <div class="metric">
+          <div class="label">EPS</div>
+          <div class="value" id="eps"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="main.js"></script>
 </body>
 </html>
