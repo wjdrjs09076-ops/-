@@ -63,7 +63,7 @@ async function fetchFundamentals(ticker) {
 }
 
 async function renderPeers(baseTicker, baseRow) {
-  const peers = peersMap[baseTicker] || [];
+  const peers = peersMap[baseTicker] || [].slice(0, 3);
   const rows = [baseRow];
 
   for (const p of peers) {
