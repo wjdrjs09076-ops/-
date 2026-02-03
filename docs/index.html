@@ -15,9 +15,26 @@
       <input id="q" placeholder="예: AAPL, MSFT, NVDA">
       <button id="btn">검색</button>
     </div>
+    <div id="hint" class="hint"></div>
+    <div id="suggestions" class="card hidden"></div>
 
     <section id="result" class="card hidden">
       <h2 id="company"></h2>
+      <section id="peers" class="card hidden">
+        <h2>경쟁사 비교</h2>
+        <div class="table-wrap">
+          <table id="peerTable">
+            <thead>
+              <tr>
+                <th>Ticker</th><th>Name</th>
+                <th>PER</th><th>PBR</th><th>EV/EBITDA</th><th>EPS</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
 
       <div class="metric-grid">
         <div class="metric">
