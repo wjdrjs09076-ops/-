@@ -1,0 +1,39 @@
+name: Update KR corp map (DART)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"  # 매주 월요일 03:00 UTC (KST 12:00)
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build kr_corp_map.json
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+        run: |
+          python scripts/build_kr_corp_map.py
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/kr_corp_map.json
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "chore: update kr_corp_map.json"
+          git push
