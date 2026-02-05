@@ -11,9 +11,16 @@ let lastTicker = null;
 let isLoading = false;
 
 function fmt(x) {
-  if (x === null || x === undefined || Number.isNaN(x)) return "-";
-  return Number(x).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (x === null || x === undefined) return "-";
+  if (typeof x === "string") {
+    const t = x.trim().toLowerCase();
+    if (!t || t === "null" || t === "nan" || t === "undefined") return "-";
+  }
+  const v = Number(x);
+  if (!Number.isFinite(v)) return "-";
+  return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
+
 
 function normName(s) {
   return String(s || "")
