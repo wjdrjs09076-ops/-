@@ -71,3 +71,48 @@ th.num, td.num{ text-align:right; }
   .metric-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .row{ flex-direction: column; align-items:flex-start; }
 }
+/* suggestions overlay fix */
+.suggestions {
+  position: relative;
+  z-index: 50;
+}
+
+.suggestions.open {
+  display: block;
+}
+
+.suggestion {
+  width: 100%;
+  display: block;
+  border: 1px solid #eee;
+  background: #fff;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 12px;
+  margin-top: 8px;
+}
+
+.suggestion:hover {
+  background: #f7f7f7;
+}
+
+.suggestion-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.suggestion-row .sym {
+  font-weight: 700;
+}
+
+.suggestion-row .nm {
+  opacity: 0.9;
+}
+
+.suggestion-row .ex {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 12px;
+}
