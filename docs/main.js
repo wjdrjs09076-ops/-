@@ -1,50 +1,90 @@
-// docs/app.js
-const API_BASE = "https://multiples-api.wjdrjs09076.workers.dev"; // <-- 너 worker 도메인으로 변경
+const $ = (id) => document.getElementById(id);
 
-const $q = document.getElementById("q");
-const $suggestions = document.getElementById("suggestions");
-const $status = document.getElementById("status");
-const $result = document.getElementById("result");
+// ✅ 네 Worker 주소
+const WORKER_BASE = "https://multiples-api.wjdrjs09076.workers.dev";
 
-let lastQuery = "";
+const qEl = $("q");
+const btnEl = $("btn");
+const hintEl = $("hint");
+const sugEl = $("suggestions");
+
+const resultEl = $("result");
+const companyEl = $("company");
+const asofEl = $("asof");
+const perEl = $("per");
+const pbrEl = $("pbr");
+const evEl = $("ev");
+const epsEl = $("eps");
+
+const loadPeersBtn = $("loadPeersBtn");
+const peerStatus = $("peerStatus");
+const peersSection = $("peers");
+const peerTableBody = document.querySelector("#peerTable tbody");
+
 let debounceTimer = null;
+let latestSuggestions = [];
+let lastTicker = null;
 
-function setStatus(msg = "") {
-  $status.textContent = msg;
+function setHint(msg = "") {
+  hintEl.textContent = msg;
 }
 
+function show(el) {
+  el.classList.remove("hidden");
+}
+function hide(el) {
+  el.classList.add("hidden");
+}
 function clearSuggestions() {
-  $suggestions.innerHTML = "";
-  $suggestions.classList.remove("open");
+  sugEl.innerHTML = "";
+  hide(sugEl);
+  latestSuggestions = [];
 }
 
-function openSuggestions() {
-  $suggestions.classList.add("open");
+function fmt(x) {
+  if (x === null || x === undefined || Number.isNaN(Number(x))) return "-";
+  return Number(x).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+async function fetchJson(path) {
+  const r = await fetch(`${WORKER_BASE}${path}`, { cache: "no-store" });
+  const text = await r.text();
+  let j;
+  try {
+    j = JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON: ${text.slice(0, 120)}`);
+  }
+  if (!r.ok) {
+    const msg = j?.message || j?.error || `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  return j;
+}
+
+/* =========================
+   Suggestions
+========================= */
 function renderSuggestions(items) {
-  if (!items || items.length === 0) {
+  latestSuggestions = Array.isArray(items) ? items : [];
+  if (latestSuggestions.length === 0) {
     clearSuggestions();
     return;
   }
 
-  $suggestions.innerHTML = items
+  // ✅ 클릭 되게: data-symbol 필수 + button 태그 사용
+  sugEl.innerHTML = latestSuggestions
     .map(
       (it) => `
-      <button type="button" class="suggestion" data-symbol="${escapeHtml(
-        it.symbol
-      )}">
-        <div class="suggestion-row">
-          <span class="sym">${escapeHtml(it.symbol)}</span>
-          <span class="nm">${escapeHtml(it.name || "")}</span>
-          <span class="ex">${escapeHtml(it.exchange || "")}</span>
-        </div>
+      <button type="button" class="sug-item" data-symbol="${escapeHtml(it.symbol)}">
+        <b>${escapeHtml(it.symbol)}</b> — ${escapeHtml(it.name || "")}
+        <span class="sug-ex">${escapeHtml(it.exchange || "")}</span>
       </button>
     `
     )
     .join("");
 
-  openSuggestions();
+  show(sugEl);
 }
 
 function escapeHtml(s) {
@@ -56,124 +96,126 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-async function api(path) {
-  const r = await fetch(`${API_BASE}${path}`);
-  const text = await r.text();
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    // keep raw
-  }
-  if (!r.ok) {
-    const msg = data?.message || data?.error || `HTTP ${r.status}`;
-    throw new Error(msg);
-  }
-  return data;
-}
-
-async function doSearch(query) {
-  setStatus("");
-  if (!query) {
+async function doSuggest(q) {
+  if (!q) {
     clearSuggestions();
+    setHint("");
     return;
   }
-  const data = await api(`/api/search?q=${encodeURIComponent(query)}`);
-  renderSuggestions(data);
+
+  try {
+    const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}`);
+    renderSuggestions(data);
+    setHint("기업명으로 인식됨. 아래 목록에서 선택하세요.");
+  } catch (e) {
+    // 검색 실패해도 UI는 깨지지 않게
+    clearSuggestions();
+    setHint(`검색 실패: ${e.message}`);
+  }
 }
 
+/* =========================
+   Fundamentals
+========================= */
 async function loadFundamentals(ticker) {
   clearSuggestions();
-  setStatus("불러오는 중...");
-  $result.innerHTML = "";
+  setHint("");
+  peerStatus.textContent = "";
+  hide(peersSection);
+  loadPeersBtn.classList.add("hidden");
+  peerTableBody.innerHTML = "";
 
-  const data = await api(`/api/fundamentals?ticker=${encodeURIComponent(ticker)}`);
+  try {
+    setHint("조회 중...");
+    const d = await fetchJson(`/api/fundamentals?ticker=${encodeURIComponent(ticker)}`);
 
-  setStatus("");
-  $result.innerHTML = renderResultCard(data);
-}
-
-function fmt(x) {
-  if (x === null || x === undefined) return "—";
-  const n = Number(x);
-  if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-function renderResultCard(d) {
-  return `
-  <div class="card">
-    <div class="card-h">
-      <div class="title">${escapeHtml(d.name || d.ticker)}</div>
-      <div class="sub">${escapeHtml(d.ticker)} · ${escapeHtml(d.country || "")} · asof ${escapeHtml(d.asof || "")}</div>
-    </div>
-
-    <div class="grid">
-      <div class="kv"><div class="k">Price</div><div class="v">${fmt(d.price)}</div></div>
-      <div class="kv"><div class="k">PER</div><div class="v">${fmt(d.per)}</div></div>
-      <div class="kv"><div class="k">PBR</div><div class="v">${fmt(d.pbr)}</div></div>
-      <div class="kv"><div class="k">EPS</div><div class="v">${fmt(d.eps)}</div></div>
-      <div class="kv"><div class="k">EV/EBITDA</div><div class="v">${fmt(d.ev_ebitda)}</div></div>
-    </div>
-
-    ${
-      d?.error
-        ? `<div class="err">에러: ${escapeHtml(d.error)} ${escapeHtml(d.message || "")}</div>`
-        : ""
+    // 에러 메시지라도 화면에 표시
+    if (d?.error) {
+      setHint(`조회 실패: ${d.error}${d.message ? " - " + d.message : ""}`);
+    } else {
+      setHint("");
     }
-  </div>
-  `;
+
+    lastTicker = d?.ticker || ticker;
+
+    companyEl.textContent = `${d?.ticker || ticker} — ${d?.name || ""}`;
+    asofEl.textContent = d?.asof ? `asof ${d.asof}` : "";
+
+    perEl.textContent = fmt(d?.per);
+    pbrEl.textContent = fmt(d?.pbr);
+    evEl.textContent = fmt(d?.ev_ebitda);
+    epsEl.textContent = fmt(d?.eps);
+
+    show(resultEl);
+
+    // 경쟁사 버튼 노출 (peers.json이 있는 경우)
+    loadPeersBtn.classList.remove("hidden");
+  } catch (e) {
+    show(resultEl);
+    companyEl.textContent = ticker;
+    asofEl.textContent = "";
+    perEl.textContent = "-";
+    pbrEl.textContent = "-";
+    evEl.textContent = "-";
+    epsEl.textContent = "-";
+    setHint(`조회 실패: ${e.message}`);
+  }
 }
 
-// 입력 디바운스
-$q.addEventListener("input", () => {
-  const v = $q.value.trim();
-  lastQuery = v;
+/* =========================
+   Events
+========================= */
+// 입력 시 자동완성 (디바운스)
+qEl.addEventListener("input", () => {
+  const q = qEl.value.trim();
 
   if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(async () => {
-    try {
-      await doSearch(lastQuery);
-    } catch (e) {
-      setStatus(`검색 실패: ${e.message}`);
-      clearSuggestions();
-    }
-  }, 200);
+  debounceTimer = setTimeout(() => doSuggest(q), 200);
 });
 
-// Enter로 바로 조회
-$q.addEventListener("keydown", async (e) => {
+// 엔터로 바로 조회
+qEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
-    const v = $q.value.trim();
+    const v = qEl.value.trim();
     if (!v) return;
-    try {
-      await loadFundamentals(v);
-    } catch (err) {
-      setStatus(`조회 실패: ${err.message}`);
-    }
+    loadFundamentals(v);
   } else if (e.key === "Escape") {
     clearSuggestions();
   }
 });
 
-// ✅ 핵심: 자동완성 클릭(이벤트 위임)
-$suggestions.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".suggestion[data-symbol]");
+// 검색 버튼
+btnEl.addEventListener("click", () => {
+  const v = qEl.value.trim();
+  if (!v) return;
+  loadFundamentals(v);
+});
+
+// ✅ 핵심: 자동완성 클릭 이벤트 (이벤트 위임)
+sugEl.addEventListener("click", (e) => {
+  const btn = e.target.closest(".sug-item[data-symbol]");
   if (!btn) return;
 
   const sym = btn.getAttribute("data-symbol");
-  $q.value = sym;
-
-  try {
-    await loadFundamentals(sym);
-  } catch (err) {
-    setStatus(`조회 실패: ${err.message}`);
-  }
+  qEl.value = sym;
+  loadFundamentals(sym);
 });
 
-// 바깥 클릭 시 닫기 (레이어 겹침 방지)
+// 바깥 클릭 시 닫기
 document.addEventListener("click", (e) => {
-  if (e.target === $q || $suggestions.contains(e.target)) return;
+  if (e.target === qEl || sugEl.contains(e.target)) return;
   clearSuggestions();
+});
+
+/* =========================
+   Peers (optional)
+   - 기존 네 peers.json / peersMap 로직이 있으면 여기에 붙이면 됨.
+   - 일단 클릭 문제 해결이 목적이라 최소한으로만 둠.
+========================= */
+loadPeersBtn.addEventListener("click", async () => {
+  peerStatus.textContent = "준비 중...";
+  // 여기부터는 네 기존 peers.json 로직이 이미 있으면 그대로 살려서 붙이면 됨.
+  // 지금은 클릭 문제 해결이 우선이니 “버튼이 동작한다”만 확인.
+  peerStatus.textContent = "경쟁사 비교 로직은 기존 코드 블록을 유지해서 붙이세요.";
 });
