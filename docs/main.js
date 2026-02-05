@@ -82,15 +82,13 @@ function renderSuggestions(list) {
 
   box.classList.remove("hidden");
 
-  // ✅ button으로 렌더(클릭 안정성↑)
+  // ✅ button으로 렌더(클릭/터치 안정성↑)
   box.innerHTML = list.map(x => `
     <button type="button" class="item" data-symbol="${x.symbol}">
       <b>${x.symbol}</b> — ${x.name}
       <span class="ex"> ${x.exchange ? `(${x.exchange})` : ""}</span>
     </button>
   `).join("");
-
-  // ❌ 여기 있던 box.querySelectorAll(".item").forEach(...) 블록은 삭제!
 }
 
 function isTickerLike(s) {
@@ -195,30 +193,50 @@ function onType() {
   }, 250);
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadPeers();
-
+/* =========================
+   ✅ 이벤트 바인딩은 "즉시" (peers 로딩 기다리지 않음)
+   ✅ 자동완성은 click 대신 pointerdown(캡처)로 확실하게
+========================= */
+document.addEventListener("DOMContentLoaded", () => {
+  // 1) 리스너 먼저 붙임 (중요)
   $("btn").addEventListener("click", search);
- $("q").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    search();
-  }
-});
+
+  $("q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      search();
+    } else if (e.key === "Escape") {
+      $("suggestions").classList.add("hidden");
+      $("suggestions").innerHTML = "";
+    }
+  });
 
   $("q").addEventListener("input", onType);
-
   $("loadPeersBtn").addEventListener("click", loadPeersBtn);
-    // ✅ 자동완성 클릭 이벤트 위임(이게 핵심)
-  $("suggestions").addEventListener("click", (e) => {
+
+  // ✅ 자동완성 클릭/터치가 씹히는 문제 방지: pointerdown + capture
+  const sug = $("suggestions");
+  sug.addEventListener("pointerdown", (e) => {
     const el = e.target.closest(".item[data-symbol]");
     if (!el) return;
 
+    e.preventDefault();
+    e.stopPropagation();
+
     $("q").value = el.dataset.symbol;
 
-    $("suggestions").classList.add("hidden");
-    $("suggestions").innerHTML = "";
+    sug.classList.add("hidden");
+    sug.innerHTML = "";
 
     search();
-  });
+  }, { capture: true, passive: false });
+
+  // 바깥 클릭하면 닫기
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target === $("q") || sug.contains(e.target)) return;
+    sug.classList.add("hidden");
+  }, { capture: true });
+
+  // 2) peers는 “나중에” 로드 (여기서 await 안 함)
+  loadPeers();
 });
