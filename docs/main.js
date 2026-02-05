@@ -3,219 +3,209 @@ const $ = (id) => document.getElementById(id);
 // ✅ 네 Worker 주소
 const WORKER_BASE = "https://multiples-api.wjdrjs09076.workers.dev";
 
-const qEl = $("q");
-const btnEl = $("btn");
-const hintEl = $("hint");
-const sugEl = $("suggestions");
-
-const resultEl = $("result");
-const companyEl = $("company");
-const asofEl = $("asof");
-const perEl = $("per");
-const pbrEl = $("pbr");
-const evEl = $("ev");
-const epsEl = $("eps");
-
-const loadPeersBtn = $("loadPeersBtn");
-const peerStatus = $("peerStatus");
-const peersSection = $("peers");
-const peerTableBody = document.querySelector("#peerTable tbody");
-
-let debounceTimer = null;
-let latestSuggestions = [];
+let peersMap = {};
+let lastBaseRow = null;
 let lastTicker = null;
-
-function setHint(msg = "") {
-  hintEl.textContent = msg;
-}
-
-function show(el) {
-  el.classList.remove("hidden");
-}
-function hide(el) {
-  el.classList.add("hidden");
-}
-function clearSuggestions() {
-  sugEl.innerHTML = "";
-  hide(sugEl);
-  latestSuggestions = [];
-}
+let isLoading = false;
 
 function fmt(x) {
-  if (x === null || x === undefined || Number.isNaN(Number(x))) return "-";
+  if (x === null || x === undefined || Number.isNaN(x)) return "-";
   return Number(x).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-async function fetchJson(path) {
-  const r = await fetch(`${WORKER_BASE}${path}`, { cache: "no-store" });
-  const text = await r.text();
-  let j;
+async function loadPeers() {
   try {
-    j = JSON.parse(text);
-  } catch {
-    throw new Error(`Invalid JSON: ${text.slice(0, 120)}`);
+    const r = await fetch("../peers.json", { cache: "no-store" });
+    peersMap = r.ok ? await r.json() : {};
+  } catch (_) {
+    peersMap = {};
   }
+}
+
+async function apiSearch(q) {
+  const url = `${WORKER_BASE}/api/search?q=${encodeURIComponent(q)}`;
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+async function fetchFundamentals(ticker) {
+  const url = `${WORKER_BASE}/api/fundamentals?ticker=${encodeURIComponent(ticker)}`;
+  const r = await fetch(url, { cache: "no-store" });
+
   if (!r.ok) {
-    const msg = j?.message || j?.error || `HTTP ${r.status}`;
+    let msg = `API error ${r.status}`;
+    try {
+      const j = await r.json();
+      msg = j?.message ? j.message : msg;
+    } catch (_) {}
     throw new Error(msg);
   }
-  return j;
+  return r.json();
 }
 
-/* =========================
-   Suggestions
-========================= */
-function renderSuggestions(items) {
-  latestSuggestions = Array.isArray(items) ? items : [];
-  if (latestSuggestions.length === 0) {
-    clearSuggestions();
+function resetUIForSearch() {
+  $("hint").textContent = "조회 중...";
+  $("suggestions").classList.add("hidden");
+  $("suggestions").innerHTML = "";
+
+  $("result").classList.add("hidden");
+  $("peers").classList.add("hidden");
+
+  $("loadPeersBtn").classList.add("hidden");
+  $("loadPeersBtn").disabled = false;
+  $("loadPeersBtn").textContent = "경쟁사 비교 보기 (최대 3개)";
+  $("peerStatus").textContent = "";
+
+  lastBaseRow = null;
+  lastTicker = null;
+}
+
+function renderSingle(d) {
+  $("result").classList.remove("hidden");
+  $("company").textContent = `${d.name} (${d.ticker})`;
+  $("asof").textContent = `As of: ${d.asof || "-"}`;
+
+  $("per").textContent = fmt(d.per);
+  $("pbr").textContent = fmt(d.pbr);
+  $("ev").textContent = fmt(d.ev_ebitda);
+  $("eps").textContent = fmt(d.eps);
+}
+
+function renderSuggestions(list) {
+  const box = $("suggestions");
+  if (!list || list.length === 0) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
     return;
   }
 
-  // ✅ 클릭 되게: data-symbol 필수 + button 태그 사용
-  sugEl.innerHTML = latestSuggestions
-    .map(
-      (it) => `
-      <button type="button" class="sug-item" data-symbol="${escapeHtml(it.symbol)}">
-        <b>${escapeHtml(it.symbol)}</b> — ${escapeHtml(it.name || "")}
-        <span class="sug-ex">${escapeHtml(it.exchange || "")}</span>
-      </button>
-    `
-    )
-    .join("");
+  box.classList.remove("hidden");
+  box.innerHTML = list.map(x => `
+    <div class="item" data-symbol="${x.symbol}">
+      <b>${x.symbol}</b> — ${x.name}
+      <span style="color:#666;font-size:12px"> ${x.exchange ? `(${x.exchange})` : ""}</span>
+    </div>
+  `).join("");
 
-  show(sugEl);
+  box.querySelectorAll(".item").forEach(el => {
+    el.addEventListener("click", () => {
+      $("q").value = el.dataset.symbol;
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      search();
+    });
+  });
 }
 
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function isTickerLike(s) {
+  return /^[A-Za-z0-9.\-]{1,12}$/.test(s);
 }
 
-async function doSuggest(q) {
-  if (!q) {
-    clearSuggestions();
-    setHint("");
-    return;
-  }
+async function search() {
+  const raw = $("q").value.trim();
+  if (!raw) return;
+  if (isLoading) return;
+
+  isLoading = true;
+  resetUIForSearch();
 
   try {
-    const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}`);
-    renderSuggestions(data);
-    setHint("기업명으로 인식됨. 아래 목록에서 선택하세요.");
-  } catch (e) {
-    // 검색 실패해도 UI는 깨지지 않게
-    clearSuggestions();
-    setHint(`검색 실패: ${e.message}`);
-  }
-}
-
-/* =========================
-   Fundamentals
-========================= */
-async function loadFundamentals(ticker) {
-  clearSuggestions();
-  setHint("");
-  peerStatus.textContent = "";
-  hide(peersSection);
-  loadPeersBtn.classList.add("hidden");
-  peerTableBody.innerHTML = "";
-
-  try {
-    setHint("조회 중...");
-    const d = await fetchJson(`/api/fundamentals?ticker=${encodeURIComponent(ticker)}`);
-
-    // 에러 메시지라도 화면에 표시
-    if (d?.error) {
-      setHint(`조회 실패: ${d.error}${d.message ? " - " + d.message : ""}`);
-    } else {
-      setHint("");
+    // 기업명 입력이면 자동완성 유도
+    if (!isTickerLike(raw) || raw.length > 6) {
+      $("hint").textContent = "기업명으로 인식됨. 아래 목록에서 선택하세요.";
+      const list = await apiSearch(raw);
+      renderSuggestions(list);
+      return;
     }
 
-    lastTicker = d?.ticker || ticker;
+    const ticker = raw.toUpperCase();
+    const base = await fetchFundamentals(ticker);
 
-    companyEl.textContent = `${d?.ticker || ticker} — ${d?.name || ""}`;
-    asofEl.textContent = d?.asof ? `asof ${d.asof}` : "";
+    lastBaseRow = base;
+    lastTicker = ticker;
 
-    perEl.textContent = fmt(d?.per);
-    pbrEl.textContent = fmt(d?.pbr);
-    evEl.textContent = fmt(d?.ev_ebitda);
-    epsEl.textContent = fmt(d?.eps);
+    renderSingle(base);
+    $("loadPeersBtn").classList.remove("hidden");
 
-    show(resultEl);
+    const peers = (peersMap[ticker] || []).slice(0, 3);
+    $("peerStatus").textContent = peers.length
+      ? `경쟁사 ${peers.length}개 준비됨 · 버튼을 누르면 불러옵니다.`
+      : `등록된 경쟁사가 없습니다 (peers.json에 추가 가능).`;
 
-    // 경쟁사 버튼 노출 (peers.json이 있는 경우)
-    loadPeersBtn.classList.remove("hidden");
+    $("hint").textContent = "";
   } catch (e) {
-    show(resultEl);
-    companyEl.textContent = ticker;
-    asofEl.textContent = "";
-    perEl.textContent = "-";
-    pbrEl.textContent = "-";
-    evEl.textContent = "-";
-    epsEl.textContent = "-";
-    setHint(`조회 실패: ${e.message}`);
+    $("hint").textContent = `조회 실패: ${e.message}`;
+  } finally {
+    isLoading = false;
   }
 }
 
-/* =========================
-   Events
-========================= */
-// 입력 시 자동완성 (디바운스)
-qEl.addEventListener("input", () => {
-  const q = qEl.value.trim();
+function renderPeersTable(rows) {
+  const tbody = $("peerTable").querySelector("tbody");
 
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => doSuggest(q), 200);
-});
+  tbody.innerHTML = rows.map(d => `
+    <tr>
+      <td>${d.ticker}</td>
+      <td>${d.name}</td>
+      <td class="num">${fmt(d.per)}</td>
+      <td class="num">${fmt(d.pbr)}</td>
+      <td class="num">${fmt(d.ev_ebitda)}</td>
+      <td class="num">${fmt(d.eps)}</td>
+    </tr>
+  `).join("");
+}
 
-// 엔터로 바로 조회
-qEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    const v = qEl.value.trim();
-    if (!v) return;
-    loadFundamentals(v);
-  } else if (e.key === "Escape") {
-    clearSuggestions();
+async function loadPeersBtn() {
+  if (!lastTicker || !lastBaseRow) return;
+
+  $("loadPeersBtn").disabled = true;
+  $("loadPeersBtn").textContent = "불러오는 중...";
+  $("peerStatus").textContent = "";
+
+  const peers = (peersMap[lastTicker] || []).slice(0, 3);
+  const rows = [lastBaseRow];
+
+  for (const p of peers) {
+    try {
+      rows.push(await fetchFundamentals(p));
+    } catch (_) {}
   }
-});
 
-// 검색 버튼
-btnEl.addEventListener("click", () => {
-  const v = qEl.value.trim();
-  if (!v) return;
-  loadFundamentals(v);
-});
+  renderPeersTable(rows);
+  $("peers").classList.remove("hidden");
+  $("loadPeersBtn").textContent = "경쟁사 비교 완료";
+  $("peerStatus").textContent = "완료";
+}
 
-// ✅ 핵심: 자동완성 클릭 이벤트 (이벤트 위임)
-sugEl.addEventListener("click", (e) => {
-  const btn = e.target.closest(".sug-item[data-symbol]");
-  if (!btn) return;
+let debounceTimer = null;
+function onType() {
+  const q = $("q").value.trim();
+  if (q.length < 2) {
+    renderSuggestions([]);
+    return;
+  }
+  if (isTickerLike(q) && q.length <= 6) {
+    renderSuggestions([]);
+    return;
+  }
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(async () => {
+    try {
+      const list = await apiSearch(q);
+      renderSuggestions(list);
+    } catch (_) {
+      renderSuggestions([]);
+    }
+  }, 250);
+}
 
-  const sym = btn.getAttribute("data-symbol");
-  qEl.value = sym;
-  loadFundamentals(sym);
-});
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadPeers();
 
-// 바깥 클릭 시 닫기
-document.addEventListener("click", (e) => {
-  if (e.target === qEl || sugEl.contains(e.target)) return;
-  clearSuggestions();
-});
+  $("btn").addEventListener("click", search);
+  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+  $("q").addEventListener("input", onType);
 
-/* =========================
-   Peers (optional)
-   - 기존 네 peers.json / peersMap 로직이 있으면 여기에 붙이면 됨.
-   - 일단 클릭 문제 해결이 목적이라 최소한으로만 둠.
-========================= */
-loadPeersBtn.addEventListener("click", async () => {
-  peerStatus.textContent = "준비 중...";
-  // 여기부터는 네 기존 peers.json 로직이 이미 있으면 그대로 살려서 붙이면 됨.
-  // 지금은 클릭 문제 해결이 우선이니 “버튼이 동작한다”만 확인.
-  peerStatus.textContent = "경쟁사 비교 로직은 기존 코드 블록을 유지해서 붙이세요.";
+  $("loadPeersBtn").addEventListener("click", loadPeersBtn);
 });
