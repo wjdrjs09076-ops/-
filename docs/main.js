@@ -81,21 +81,16 @@ function renderSuggestions(list) {
   }
 
   box.classList.remove("hidden");
+
+  // ✅ button으로 렌더(클릭 안정성↑)
   box.innerHTML = list.map(x => `
-    <div class="item" data-symbol="${x.symbol}">
+    <button type="button" class="item" data-symbol="${x.symbol}">
       <b>${x.symbol}</b> — ${x.name}
-      <span style="color:#666;font-size:12px"> ${x.exchange ? `(${x.exchange})` : ""}</span>
-    </div>
+      <span class="ex"> ${x.exchange ? `(${x.exchange})` : ""}</span>
+    </button>
   `).join("");
 
-  box.querySelectorAll(".item").forEach(el => {
-    el.addEventListener("click", () => {
-      $("q").value = el.dataset.symbol;
-      box.classList.add("hidden");
-      box.innerHTML = "";
-      search();
-    });
-  });
+  // ❌ 여기 있던 box.querySelectorAll(".item").forEach(...) 블록은 삭제!
 }
 
 function isTickerLike(s) {
@@ -208,4 +203,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("q").addEventListener("input", onType);
 
   $("loadPeersBtn").addEventListener("click", loadPeersBtn);
+    // ✅ 자동완성 클릭 이벤트 위임(이게 핵심)
+  $("suggestions").addEventListener("click", (e) => {
+    const el = e.target.closest(".item[data-symbol]");
+    if (!el) return;
+
+    $("q").value = el.dataset.symbol;
+
+    $("suggestions").classList.add("hidden");
+    $("suggestions").innerHTML = "";
+
+    search();
+  });
 });
