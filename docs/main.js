@@ -199,7 +199,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadPeers();
 
   $("btn").addEventListener("click", search);
-  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+ $("q").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    search();
+  }
+});
+
   $("q").addEventListener("input", onType);
 
   $("loadPeersBtn").addEventListener("click", loadPeersBtn);
