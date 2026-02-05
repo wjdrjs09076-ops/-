@@ -15,7 +15,7 @@ function fmt(x) {
 
 async function loadPeers() {
   try {
-    const r = await fetch("../peers.json", { cache: "no-store" });
+    const r = await fetch("./peers.json", { cache: "no-store" });
     peersMap = r.ok ? await r.json() : {};
   } catch (_) {
     peersMap = {};
