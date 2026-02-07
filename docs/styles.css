@@ -16,6 +16,7 @@ body{
 .container{ max-width: 980px; margin: 36px auto; padding: 0 16px; }
 .header h1{ margin:0 0 6px; }
 .sub{ margin:0; color:var(--muted); }
+
 .card{
   background: var(--card);
   border: 1px solid var(--border);
@@ -25,6 +26,7 @@ body{
   box-shadow: var(--shadow);
 }
 .hidden{ display:none; }
+
 .search{ display:flex; gap:10px; align-items:center; }
 .search input{
   flex:1; padding:12px 14px; border-radius:12px; border:1px solid var(--border);
@@ -35,17 +37,30 @@ body{
   background:#fff; cursor:pointer;
 }
 .search button:hover{ background:#f1f1f5; }
+
 .hint{ margin-top:10px; font-size:12px; color:var(--muted); }
+
+/* suggestions */
 .suggestions{ margin-top:12px; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
 .suggestions .item{
-  padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; background:#fff;
+  width:100%;
+  display:block;
+  text-align:left;
+  padding:10px 12px;
+  border:0;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+  background:#fff;
 }
 .suggestions .item:last-child{ border-bottom:none; }
 .suggestions .item:hover{ background:#fafafa; }
+.suggestions .ex{ color:#666; font-size:12px; margin-left:6px; }
+
 .row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
 .title{ margin:0; }
 .asof{ color:var(--muted); font-size:12px; }
 .small{ color:var(--muted); font-size:12px; }
+
 .metric-grid{
   display:grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap:12px; margin-top:12px;
@@ -53,7 +68,8 @@ body{
 .metric{ border:1px solid var(--border); border-radius:14px; padding:12px; background:#fff; }
 .metric .label{ font-size:12px; color:var(--muted); }
 .metric .value{ margin-top:6px; font-size:20px; font-weight:800; font-variant-numeric: tabular-nums; }
-.actions{ display:flex; align-items:center; gap:12px; margin-top:14px; }
+
+.actions{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:14px; }
 .peer-btn{
   padding:12px 16px; border-radius:12px; border:1px solid var(--border);
   background:#f9f9fb; cursor:pointer;
@@ -61,40 +77,50 @@ body{
 .peer-btn:hover{ background:#f0f0f6; }
 .peer-btn:disabled{ opacity:.6; cursor:not-allowed; }
 .peer-status{ font-size:12px; color:var(--muted); }
+
 .table-wrap{ overflow:auto; margin-top:12px; }
 table{ width:100%; border-collapse:collapse; min-width:720px; }
 th, td{ padding:10px 10px; border-bottom:1px solid var(--border); text-align:left; font-size:14px; }
 th{ position: sticky; top:0; background:#fff; z-index:1; }
 th.num, td.num{ text-align:right; }
+
 .footer{ margin:24px 0 40px; color:var(--muted); }
+
 @media (max-width: 880px){
   .metric-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .row{ flex-direction: column; align-items:flex-start; }
 }
+
 /* suggestions click fix */
 #suggestions {
   position: relative;
   z-index: 9999;
 }
 
-#suggestions .item {
-  width: 100%;
-  display: block;
-  text-align: left;
-  background: #fff;
-  border: 1px solid #eee;
-  padding: 14px 16px;
-  border-radius: 12px;
-  cursor: pointer;
-  margin-top: 8px;
+/* ===== compare box ===== */
+.compare-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
 }
+.chip{
+  border:1px solid var(--border);
+  background:#fff;
+  padding:8px 10px;
+  border-radius:999px;
+  cursor:pointer;
+  font-size:13px;
+}
+.chip:hover{ background:#fafafa; }
 
-#suggestions .item:hover {
-  background: #f7f7f7;
+.mini{
+  padding:6px 10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:#fff;
+  cursor:pointer;
+  font-size:12px;
 }
-
-#suggestions .ex {
-  color: #666;
-  font-size: 12px;
-  margin-left: 6px;
-}
+.mini:hover{ background:#f7f7f7; }
+.mini.danger{ background:#fff5f5; }
