@@ -10,22 +10,32 @@
   <main class="container">
     <header class="header">
       <h1>기업 멀티플 비교</h1>
-      <p class="sub">기업명/티커 검색 → 지표 확인 → 버튼으로 경쟁사(최대 3개) 비교</p>
+      <p class="sub">기업명/티커 검색 → 지표 확인 → 비교함에 담아 원하는 기업끼리 비교</p>
     </header>
 
+    <!-- 검색 -->
     <section class="card">
       <div class="search">
-        <input id="q" placeholder="예: AAPL 또는 Apple" autocomplete="off" />
+        <input id="q" placeholder="예: 005930.KS 또는 삼성전자 / AAPL 또는 Apple" autocomplete="off" />
         <button id="btn">검색</button>
       </div>
       <div id="hint" class="hint"></div>
       <div id="suggestions" class="suggestions hidden"></div>
     </section>
 
+    <!-- 결과 -->
     <section id="result" class="card hidden">
-      <div class="row">
-        <h2 id="company" class="title"></h2>
-        <span id="asof" class="asof"></span>
+      <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-end;">
+        <div>
+          <h2 id="company" class="title"></h2>
+          <span id="asof" class="asof"></span>
+        </div>
+
+        <!-- ✅ 추가: 비교함 액션 -->
+        <div class="actions" style="margin:0; display:flex; gap:8px; align-items:center;">
+          <button id="btnAddCompare" class="peer-btn" disabled>비교함에 추가</button>
+          <button id="btnClearCompare" class="peer-btn">비교함 비우기</button>
+        </div>
       </div>
 
       <div class="metric-grid">
@@ -36,15 +46,17 @@
       </div>
 
       <div class="actions">
-        <button id="loadPeersBtn" class="peer-btn hidden">경쟁사 비교 보기 (최대 3개)</button>
+        <!-- 기존 peer 버튼은 이제 "비교함 보기"로 재활용 -->
+        <button id="loadPeersBtn" class="peer-btn">비교함 보기</button>
         <span id="peerStatus" class="peer-status"></span>
       </div>
     </section>
 
+    <!-- ✅ 비교함(기존 peers 섹션 재활용) -->
     <section id="peers" class="card hidden">
       <div class="row">
-        <h2 class="title">경쟁사 비교</h2>
-        <div class="small">※ 표는 본 기업 + 경쟁사 최대 3개</div>
+        <h2 class="title">비교함</h2>
+        <div class="small">※ 검색한 기업을 담아 원하는 조합으로 비교 (최대 4개 권장)</div>
       </div>
 
       <div class="table-wrap">
@@ -57,15 +69,21 @@
               <th class="num">PBR</th>
               <th class="num">EV/EBITDA</th>
               <th class="num">EPS</th>
+              <th class="num">삭제</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
+
+      <div class="actions" style="justify-content:flex-end;">
+        <button id="btnRefreshCompare" class="peer-btn">비교함 새로고침</button>
+      </div>
+
+      <div id="compareHint" class="hint"></div>
     </section>
 
-    <footer class="footer">
-    </footer>
+    <footer class="footer"></footer>
   </main>
 
   <script src="main.js"></script>
