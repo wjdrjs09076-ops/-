@@ -98,3 +98,10 @@ th.num, td.num{ text-align:right; }
   font-size: 12px;
   margin-left: 6px;
 }
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
