@@ -11,20 +11,27 @@
     <header class="header">
       <h1>기업 멀티플 비교</h1>
       <p class="sub">기업명/티커 검색 → 주요 지표 확인 → 버튼으로 경쟁사(최대 3개) 비교</p>
-      <p class="sub">기업명/티커 검색 → 지표 확인 → 버튼으로 경쟁사(최대 3개) 비교</p>
     </header>
 
+    <!-- Search card -->
     <section class="card">
-
-        <button id="btn">검색</button>
+      <div class="row">
+        <input
+          id="q"
+          class="input"
+          type="text"
+          placeholder="기업명 또는 티커 (예: AAPL, 005930.KS)"
+          autocomplete="off"
+        />
+        <button id="btn" class="btn">검색</button>
       </div>
-      <div id="hint" class="hint"></div>
 
+      <div id="hint" class="hint"></div>
       <div id="suggestions" class="suggestions hidden"></div>
     </section>
 
-      </div>
-
+    <!-- Metrics -->
+    <section class="card">
       <div class="metric-grid">
         <div class="metric">
           <div class="label">PER</div>
@@ -42,15 +49,15 @@
           <div class="label">EPS</div>
           <div class="value" id="eps">-</div>
         </div>
-        <div class="metric"><div class="label">PER</div><div class="value" id="per">-</div></div>
-        <div class="metric"><div class="label">PBR</div><div class="value" id="pbr">-</div></div>
-        <div class="metric"><div class="label">EV / EBITDA</div><div class="value" id="ev">-</div></div>
-        <div class="metric"><div class="label">EPS</div><div class="value" id="eps">-</div></div>
       </div>
 
       <div class="actions">
+        <button id="btnPeers" class="btn-secondary">경쟁사 비교 보기 (최대 3개)</button>
+        <div id="peerHint" class="hint"></div>
+      </div>
+    </section>
 
-
+    <!-- Peers table -->
     <section id="peers" class="card hidden">
       <div class="row">
         <h2 class="title">경쟁사 비교</h2>
@@ -75,7 +82,7 @@
     </section>
 
     <footer class="footer">
-      <small>US는 SEC XBRL 기반 계산(무료) · KR는 추후 DART로 확장 예정</small>
+      <small>US는 SEC XBRL 기반 계산(무료)</small>
     </footer>
   </main>
 
