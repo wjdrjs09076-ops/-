@@ -10,25 +10,39 @@
   <main class="container">
     <header class="header">
       <h1>기업 멀티플 비교</h1>
+      <p class="sub">기업명/티커 검색 → 주요 지표 확인 → 버튼으로 경쟁사(최대 3개) 비교</p>
       <p class="sub">기업명/티커 검색 → 지표 확인 → 버튼으로 경쟁사(최대 3개) 비교</p>
     </header>
 
     <section class="card">
-      <div class="search">
-        <input id="q" placeholder="예: AAPL 또는 Apple" autocomplete="off" />
+@@ -19,7 +19,6 @@
         <button id="btn">검색</button>
       </div>
       <div id="hint" class="hint"></div>
+
       <div id="suggestions" class="suggestions hidden"></div>
     </section>
 
-    <section id="result" class="card hidden">
-      <div class="row">
-        <h2 id="company" class="title"></h2>
-        <span id="asof" class="asof"></span>
+@@ -30,22 +29,10 @@
       </div>
 
       <div class="metric-grid">
+        <div class="metric">
+          <div class="label">PER</div>
+          <div class="value" id="per">-</div>
+        </div>
+        <div class="metric">
+          <div class="label">PBR</div>
+          <div class="value" id="pbr">-</div>
+        </div>
+        <div class="metric">
+          <div class="label">EV / EBITDA</div>
+          <div class="value" id="ev">-</div>
+        </div>
+        <div class="metric">
+          <div class="label">EPS</div>
+          <div class="value" id="eps">-</div>
+        </div>
         <div class="metric"><div class="label">PER</div><div class="value" id="per">-</div></div>
         <div class="metric"><div class="label">PBR</div><div class="value" id="pbr">-</div></div>
         <div class="metric"><div class="label">EV / EBITDA</div><div class="value" id="ev">-</div></div>
@@ -36,10 +50,7 @@
       </div>
 
       <div class="actions">
-        <button id="loadPeersBtn" class="peer-btn hidden">경쟁사 비교 보기 (최대 3개)</button>
-        <span id="peerStatus" class="peer-status"></span>
-      </div>
-    </section>
+@@ -56,3 +43,32 @@
 
     <section id="peers" class="card hidden">
       <div class="row">
@@ -56,7 +67,16 @@
               <th class="num">PER</th>
               <th class="num">PBR</th>
               <th class="num">EV/EBITDA</th>
-료</small>
+              <th class="num">EPS</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <small>US는 SEC XBRL 기반 계산(무료) · KR는 추후 DART로 확장 예정</small>
     </footer>
   </main>
 
