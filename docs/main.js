@@ -3,18 +3,13 @@ const $ = (id) => document.getElementById(id);
 // ✅ 네 Worker 주소
 const WORKER_BASE = "https://multiples-api.wjdrjs09076.workers.dev";
 
-// ✅ 비교함(LocalStorage) 키
-const COMPARE_KEY = "multiples_compare_v1";
-
+let peersMap = {};
 let krMap = null;          // { "005930": {corp_code, name}, ... }
 let krList = [];           // [{ code:"005930", name:"삼성전자" }, ...]
 let lastBaseRow = null;
 let lastTicker = null;
 let isLoading = false;
 
-/* =========================
-   Format / Utils
-========================= */
 function fmt(x) {
   if (x === null || x === undefined) return "-";
   if (typeof x === "string") {
@@ -25,6 +20,7 @@ function fmt(x) {
   if (!Number.isFinite(v)) return "-";
   return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
+
 
 function normName(s) {
   return String(s || "")
@@ -39,62 +35,15 @@ function hasHangul(s) {
   return /[ㄱ-ㅎ가-힣]/.test(String(s || ""));
 }
 
-function isTickerLike(s) {
-  return /^[A-Za-z0-9.\-]{1,16}$/.test(s);
-}
-
-function isKrCode6(s) {
-  return /^\d{6}$/.test(String(s || ""));
-}
-function isKrTicker(s) {
-  return /^\d{6}\.(KS|KQ)$/i.test(String(s || ""));
-}
-
-/* =========================
-   LocalStorage Compare Box
-========================= */
-function loadCompareList() {
+async function loadPeers() {
   try {
-    const raw = localStorage.getItem(COMPARE_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    const r = await fetch("./peers.json", { cache: "no-store" });
+    peersMap = r.ok ? await r.json() : {};
   } catch (_) {
-    return [];
+    peersMap = {};
   }
 }
 
-function saveCompareList(arr) {
-  localStorage.setItem(COMPARE_KEY, JSON.stringify(arr));
-}
-
-function addToCompare(row) {
-  if (!row?.ticker) return { ok: false, msg: "ticker 없음" };
-
-  const list = loadCompareList();
-  const exists = list.some((x) => String(x?.ticker).toUpperCase() === String(row.ticker).toUpperCase());
-  if (exists) return { ok: false, msg: "이미 비교함에 있음" };
-
-  // 너무 커지지 않게(권장 4개, 하지만 제한은 12개 정도)
-  if (list.length >= 12) return { ok: false, msg: "비교함이 가득 찼습니다(최대 12개)" };
-
-  list.push({ ticker: row.ticker, name: row.name || row.ticker });
-  saveCompareList(list);
-  return { ok: true, msg: "추가됨" };
-}
-
-function removeFromCompare(ticker) {
-  const t = String(ticker || "").toUpperCase();
-  const list = loadCompareList().filter((x) => String(x?.ticker).toUpperCase() !== t);
-  saveCompareList(list);
-}
-
-function clearCompare() {
-  saveCompareList([]);
-}
-
-/* =========================
-   Data Loaders
-========================= */
 async function loadKrMap() {
   try {
     const r = await fetch("./kr_corp_map.json", { cache: "no-store" });
@@ -137,19 +86,70 @@ async function fetchFundamentals(ticker) {
   return r.json();
 }
 
-/* =========================
-   KR Suggestions / Resolve
-========================= */
+function resetUIForSearch() {
+  $("hint").textContent = "조회 중...";
+  $("suggestions").classList.add("hidden");
+  $("suggestions").innerHTML = "";
+
+  $("result").classList.add("hidden");
+  $("peers").classList.add("hidden");
+
+  $("loadPeersBtn").classList.add("hidden");
+  $("loadPeersBtn").disabled = false;
+  $("loadPeersBtn").textContent = "경쟁사 비교 보기 (최대 3개)";
+  $("peerStatus").textContent = "";
+
+  lastBaseRow = null;
+  lastTicker = null;
+}
+
+function renderSingle(d) {
+  $("result").classList.remove("hidden");
+  $("company").textContent = `${d.name} (${d.ticker})`;
+  $("asof").textContent = `As of: ${d.asof || "-"}`;
+
+  $("per").textContent = fmt(d.per);
+  $("pbr").textContent = fmt(d.pbr);
+  $("ev").textContent = fmt(d.ev_ebitda);
+  $("eps").textContent = fmt(d.eps);
+}
+
+function renderSuggestions(list) {
+  const box = $("suggestions");
+  if (!list || list.length === 0) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  box.classList.remove("hidden");
+
+  // item shape: {symbol, name, exchange, type, note?}
+  box.innerHTML = list
+    .slice(0, 10)
+    .map((x) => `
+      <button type="button" class="item" data-symbol="${x.symbol}">
+        <b>${x.symbol}</b> — ${x.name}
+        <span class="ex">${x.note ? x.note : (x.exchange ? `(${x.exchange})` : "")}</span>
+      </button>
+    `)
+    .join("");
+}
+
+function isTickerLike(s) {
+  return /^[A-Za-z0-9.\-]{1,12}$/.test(s);
+}
+
 function krSuggest(q) {
   if (!krList.length) return [];
   const nq = normName(q);
   if (!nq) return [];
 
+  // 포함 매칭(가벼운)
   const hits = krList
     .filter((x) => x._n.includes(nq) || x.code.includes(nq))
     .slice(0, 10)
     .map((x) => ({
-      symbol: `${x.code}.KS`, // 기본 KS
+      symbol: `${x.code}.KS`,            // 기본은 KS로 제안 (KQ는 조회 시 fallback)
       name: x.name,
       exchange: "KRX",
       type: "EQUITY",
@@ -173,6 +173,7 @@ async function resolveAndFetchKRByName(nameKor) {
   const hits = krSuggest(nameKor);
   if (!hits.length) throw new Error("KR 기업명을 찾지 못했습니다. (kr_corp_map.json 기준)");
 
+  // 1개면 바로 조회, 여러 개면 suggestions 띄우기
   if (hits.length === 1) {
     const code6 = hits[0].symbol.slice(0, 6);
     return await resolveAndFetchKRByCode(code6);
@@ -183,91 +184,6 @@ async function resolveAndFetchKRByName(nameKor) {
   }
 }
 
-/* =========================
-   UI Helpers
-========================= */
-function resetUIForSearch() {
-  $("hint").textContent = "조회 중...";
-  $("suggestions").classList.add("hidden");
-  $("suggestions").innerHTML = "";
-
-  $("result").classList.add("hidden");
-  $("peers").classList.add("hidden");
-
-  $("peerStatus").textContent = "";
-  $("compareHint").textContent = "";
-
-  lastBaseRow = null;
-  lastTicker = null;
-
-  // 버튼 상태 초기화
-  const addBtn = $("btnAddCompare");
-  if (addBtn) addBtn.disabled = true;
-}
-
-function renderSingle(d) {
-  $("result").classList.remove("hidden");
-  $("company").textContent = `${d.name} (${d.ticker})`;
-  $("asof").textContent = `As of: ${d.asof || "-"}`;
-
-  $("per").textContent = fmt(d.per);
-  $("pbr").textContent = fmt(d.pbr);
-  $("ev").textContent = fmt(d.ev_ebitda);
-  $("eps").textContent = fmt(d.eps);
-
-  // ✅ 비교함 추가 버튼 활성화
-  const addBtn = $("btnAddCompare");
-  if (addBtn) {
-    addBtn.disabled = false;
-  }
-}
-
-function renderSuggestions(list) {
-  const box = $("suggestions");
-  if (!list || list.length === 0) {
-    box.classList.add("hidden");
-    box.innerHTML = "";
-    return;
-  }
-  box.classList.remove("hidden");
-
-  box.innerHTML = list
-    .slice(0, 10)
-    .map(
-      (x) => `
-      <button type="button" class="item" data-symbol="${x.symbol}">
-        <b>${x.symbol}</b> — ${x.name}
-        <span class="ex">${x.note ? x.note : (x.exchange ? `(${x.exchange})` : "")}</span>
-      </button>
-    `
-    )
-    .join("");
-}
-
-function renderCompareTable(rows) {
-  const tbody = $("peerTable").querySelector("tbody");
-  tbody.innerHTML = rows
-    .map(
-      (d) => `
-    <tr>
-      <td>${d.ticker}</td>
-      <td>${d.name}</td>
-      <td class="num">${fmt(d.per)}</td>
-      <td class="num">${fmt(d.pbr)}</td>
-      <td class="num">${fmt(d.ev_ebitda)}</td>
-      <td class="num">${fmt(d.eps)}</td>
-      <td class="num">
-        <button type="button" class="mini-del" data-del="${d.ticker}">삭제</button>
-      </td>
-    </tr>
-  `
-    )
-    .join("");
-}
-
-/* =========================
-   Core: Search
-========================= */
 async function search() {
   let raw = $("q").value.trim();
   if (!raw) return;
@@ -278,23 +194,37 @@ async function search() {
 
   try {
     // ✅ 6자리 숫자면 KR로 간주
-    if (isKrCode6(raw)) {
+    if (/^\d{6}$/.test(raw)) {
       const base = await resolveAndFetchKRByCode(raw);
       lastBaseRow = base;
       lastTicker = base.ticker;
 
       renderSingle(base);
+      $("loadPeersBtn").classList.remove("hidden");
+
+      const peers = (peersMap[lastTicker] || []).slice(0, 3);
+      $("peerStatus").textContent = peers.length
+        ? `경쟁사 ${peers.length}개 준비됨 · 버튼을 누르면 불러옵니다.`
+        : `등록된 경쟁사가 없습니다 (peers.json에 추가 가능).`;
+
       $("hint").textContent = "";
       return;
     }
 
     // ✅ 6자리.KS / 6자리.KQ면 그대로 KR 조회
-    if (isKrTicker(raw)) {
+    if (/^\d{6}\.(KS|KQ)$/i.test(raw)) {
       const base = await fetchFundamentals(raw.toUpperCase());
       lastBaseRow = base;
       lastTicker = base.ticker;
 
       renderSingle(base);
+      $("loadPeersBtn").classList.remove("hidden");
+
+      const peers = (peersMap[lastTicker] || []).slice(0, 3);
+      $("peerStatus").textContent = peers.length
+        ? `경쟁사 ${peers.length}개 준비됨 · 버튼을 누르면 불러옵니다.`
+        : `등록된 경쟁사가 없습니다 (peers.json에 추가 가능).`;
+
       $("hint").textContent = "";
       return;
     }
@@ -307,11 +237,18 @@ async function search() {
       lastTicker = base.ticker;
 
       renderSingle(base);
+      $("loadPeersBtn").classList.remove("hidden");
+
+      const peers = (peersMap[lastTicker] || []).slice(0, 3);
+      $("peerStatus").textContent = peers.length
+        ? `경쟁사 ${peers.length}개 준비됨 · 버튼을 누르면 불러옵니다.`
+        : `등록된 경쟁사가 없습니다 (peers.json에 추가 가능).`;
+
       $("hint").textContent = "";
       return;
     }
 
-    // ✅ 그 외: US/글로벌
+    // ✅ 그 외: US/글로벌 (티커면 fundamentals, 이름이면 search suggestions)
     if (!isTickerLike(raw) || raw.length > 6) {
       $("hint").textContent = "기업명으로 인식됨. 아래 목록에서 선택하세요.";
       const list = await apiSearchUS(raw);
@@ -326,6 +263,13 @@ async function search() {
     lastTicker = ticker;
 
     renderSingle(base);
+    $("loadPeersBtn").classList.remove("hidden");
+
+    const peers = (peersMap[ticker] || []).slice(0, 3);
+    $("peerStatus").textContent = peers.length
+      ? `경쟁사 ${peers.length}개 준비됨 · 버튼을 누르면 불러옵니다.`
+      : `등록된 경쟁사가 없습니다 (peers.json에 추가 가능).`;
+
     $("hint").textContent = "";
   } catch (e) {
     $("hint").textContent = `조회 실패: ${e.message}`;
@@ -334,49 +278,46 @@ async function search() {
   }
 }
 
-/* =========================
-   Compare Box: Load / Refresh
-========================= */
-async function loadCompareBox() {
-  const list = loadCompareList(); // [{ticker,name}]
-  if (!list.length) {
-    $("peers").classList.remove("hidden");
-    renderCompareTable([]);
-    $("compareHint").textContent = "비교함이 비어 있습니다. 검색 후 '비교함에 추가'를 눌러 담아보세요.";
-    return;
-  }
-
-  $("peerStatus").textContent = "비교함 불러오는 중...";
-  $("compareHint").textContent = "";
-
-  // ✅ 병렬로 fundamentals 로드(실패한 건 건너뜀)
-  const rows = [];
-  const jobs = list.map(async (x) => {
-    try {
-      const d = await fetchFundamentals(x.ticker);
-      rows.push(d);
-    } catch (_) {}
-  });
-  await Promise.all(jobs);
-
-  // ticker 순서 유지하고 싶으면 재정렬
-  const order = new Map(list.map((x, i) => [String(x.ticker).toUpperCase(), i]));
-  rows.sort((a, b) => (order.get(String(a.ticker).toUpperCase()) ?? 999) - (order.get(String(b.ticker).toUpperCase()) ?? 999));
-
-  $("peers").classList.remove("hidden");
-  renderCompareTable(rows);
-
-  $("peerStatus").textContent = "";
-  if (!rows.length) {
-    $("compareHint").textContent = "비교함에는 항목이 있지만, 현재 데이터를 불러오지 못했습니다. (API/네트워크 확인)";
-  } else {
-    $("compareHint").textContent = `총 ${rows.length}개 비교 중 · 삭제 버튼으로 제거 가능`;
-  }
+function renderPeersTable(rows) {
+  const tbody = $("peerTable").querySelector("tbody");
+  tbody.innerHTML = rows
+    .map(
+      (d) => `
+    <tr>
+      <td>${d.ticker}</td>
+      <td>${d.name}</td>
+      <td class="num">${fmt(d.per)}</td>
+      <td class="num">${fmt(d.pbr)}</td>
+      <td class="num">${fmt(d.ev_ebitda)}</td>
+      <td class="num">${fmt(d.eps)}</td>
+    </tr>
+  `
+    )
+    .join("");
 }
 
-/* =========================
-   Input Suggestions (debounce)
-========================= */
+async function loadPeersBtn() {
+  if (!lastTicker || !lastBaseRow) return;
+
+  $("loadPeersBtn").disabled = true;
+  $("loadPeersBtn").textContent = "불러오는 중...";
+  $("peerStatus").textContent = "";
+
+  const peers = (peersMap[lastTicker] || []).slice(0, 3);
+  const rows = [lastBaseRow];
+
+  for (const p of peers) {
+    try {
+      rows.push(await fetchFundamentals(p));
+    } catch (_) {}
+  }
+
+  renderPeersTable(rows);
+  $("peers").classList.remove("hidden");
+  $("loadPeersBtn").textContent = "경쟁사 비교 완료";
+  $("peerStatus").textContent = "완료";
+}
+
 let debounceTimer = null;
 function onType() {
   const q = $("q").value.trim();
@@ -393,7 +334,7 @@ function onType() {
     return;
   }
 
-  // ✅ 6자리 숫자면 KR suggestions
+  // ✅ 6자리 숫자면 KR suggestions로 안내
   if (/^\d{2,6}$/.test(q)) {
     const list = krSuggest(q);
     renderSuggestions(list);
@@ -418,9 +359,11 @@ function onType() {
 }
 
 /* =========================
-   Event Bindings
+   이벤트 바인딩 + suggestions 선택 (pointerdown으로 안정화)
 ========================= */
 document.addEventListener("DOMContentLoaded", () => {
+  // 백그라운드 로딩
+  loadPeers();
   loadKrMap();
 
   $("btn").addEventListener("click", search);
@@ -434,42 +377,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   $("q").addEventListener("input", onType);
+  $("loadPeersBtn").addEventListener("click", loadPeersBtn);
 
-  // ✅ 비교함 보기
-  $("loadPeersBtn").addEventListener("click", () => {
-    loadCompareBox();
-  });
-
-  // ✅ 비교함에 추가
-  const addBtn = $("btnAddCompare");
-  if (addBtn) {
-    addBtn.addEventListener("click", () => {
-      if (!lastBaseRow) return;
-      const r = addToCompare(lastBaseRow);
-      $("peerStatus").textContent = r.ok ? "비교함에 추가했습니다." : r.msg;
-    });
-  }
-
-  // ✅ 비교함 비우기
-  const clearBtn = $("btnClearCompare");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      clearCompare();
-      $("peerStatus").textContent = "비교함을 비웠습니다.";
-      // 비교함 탭 열려있으면 즉시 반영
-      if (!$("peers").classList.contains("hidden")) loadCompareBox();
-    });
-  }
-
-  // ✅ 비교함 새로고침
-  const refreshBtn = $("btnRefreshCompare");
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => {
-      loadCompareBox();
-    });
-  }
-
-  // ✅ suggestions 선택 (pointerdown으로 안정화)
   const sug = $("suggestions");
   sug.addEventListener(
     "pointerdown",
@@ -487,7 +396,7 @@ document.addEventListener("DOMContentLoaded", () => {
       sug.innerHTML = "";
 
       // ✅ KR 제안(005930.KS)인데 KS가 실패할 수 있으니 6자리면 fallback 조회
-      if (isKrTicker(sym)) {
+      if (/^\d{6}\.(KS|KQ)$/i.test(sym)) {
         const code6 = sym.slice(0, 6);
         isLoading = true;
         resetUIForSearch();
@@ -497,6 +406,13 @@ document.addEventListener("DOMContentLoaded", () => {
           lastTicker = base.ticker;
 
           renderSingle(base);
+          $("loadPeersBtn").classList.remove("hidden");
+
+          const peers = (peersMap[lastTicker] || []).slice(0, 3);
+          $("peerStatus").textContent = peers.length
+            ? `경쟁사 ${peers.length}개 준비됨 · 버튼을 누르면 불러옵니다.`
+            : `등록된 경쟁사가 없습니다 (peers.json에 추가 가능).`;
+
           $("hint").textContent = "";
         } catch (err) {
           $("hint").textContent = `조회 실패: ${err.message}`;
@@ -520,13 +436,4 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     { capture: true }
   );
-
-  // ✅ 비교함 테이블 내 "삭제" 버튼 위임
-  $("peerTable").addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-del]");
-    if (!btn) return;
-    const t = btn.dataset.del;
-    removeFromCompare(t);
-    loadCompareBox(); // 즉시 재렌더
-  });
 });
