@@ -10,12 +10,12 @@
   <main class="container">
     <header class="header">
       <h1>기업 멀티플 비교</h1>
-      <p class="sub">기업명/티커 검색 → 지표 확인 → 버튼으로 경쟁사(최대 3개) 비교</p>
+      <p class="sub">기업명/티커 검색 → 지표 확인 → 비교함에 저장해 자유 비교</p>
     </header>
 
     <section class="card">
       <div class="search">
-        <input id="q" placeholder="예: AAPL 또는 Apple" autocomplete="off" />
+        <input id="q" placeholder="예: AAPL 또는 Apple 또는 005930 또는 삼성전자" autocomplete="off" />
         <button id="btn">검색</button>
       </div>
       <div id="hint" class="hint"></div>
@@ -36,11 +36,18 @@
       </div>
 
       <div class="actions">
+        <!-- 기존 peers.json 기반 -->
         <button id="loadPeersBtn" class="peer-btn hidden">경쟁사 비교 보기 (최대 3개)</button>
         <span id="peerStatus" class="peer-status"></span>
+
+        <!-- ✅ 비교함 -->
+        <button id="addToCompareBtn" class="peer-btn">비교함에 추가</button>
+        <button id="clearCompareBtn" class="peer-btn">비교함 비우기</button>
       </div>
+      <div id="compareStatus" class="peer-status"></div>
     </section>
 
+    <!-- 기존 peers 표 (원하면 나중에 제거 가능) -->
     <section id="peers" class="card hidden">
       <div class="row">
         <h2 class="title">경쟁사 비교</h2>
@@ -64,8 +71,34 @@
       </div>
     </section>
 
-    <footer class="footer">
-    </footer>
+    <!-- ✅ 비교함 섹션 -->
+    <section id="compare" class="card hidden">
+      <div class="row">
+        <h2 class="title">비교함</h2>
+        <div class="small">※ 원하는 기업을 추가/삭제해서 자유 비교</div>
+      </div>
+
+      <div id="compareChips" class="compare-chips"></div>
+
+      <div class="table-wrap">
+        <table id="compareTable">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Name</th>
+              <th class="num">PER</th>
+              <th class="num">PBR</th>
+              <th class="num">EV/EBITDA</th>
+              <th class="num">EPS</th>
+              <th class="num">관리</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="footer"></footer>
   </main>
 
   <script src="main.js"></script>
