@@ -3,12 +3,21 @@ const $ = (id) => document.getElementById(id);
 // ✅ 네 Worker 주소
 const WORKER_BASE = "https://multiples-api.wjdrjs09076.workers.dev";
 
+// peers.json 유지
 let peersMap = {};
+
+// KR map
 let krMap = null;          // { "005930": {corp_code, name}, ... }
 let krList = [];           // [{ code:"005930", name:"삼성전자" }, ...]
+
 let lastBaseRow = null;
 let lastTicker = null;
 let isLoading = false;
+
+// ✅ compare box (localStorage)
+const LS_KEY = "multiples_compare_v1";
+const MAX_COMPARE = 6;
+let compareTickers = []; // ["005930.KS", "AAPL", ...]
 
 function fmt(x) {
   if (x === null || x === undefined) return "-";
@@ -20,7 +29,6 @@ function fmt(x) {
   if (!Number.isFinite(v)) return "-";
   return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
-
 
 function normName(s) {
   return String(s || "")
@@ -94,13 +102,20 @@ function resetUIForSearch() {
   $("result").classList.add("hidden");
   $("peers").classList.add("hidden");
 
+  // peers 버튼 초기화
   $("loadPeersBtn").classList.add("hidden");
   $("loadPeersBtn").disabled = false;
   $("loadPeersBtn").textContent = "경쟁사 비교 보기 (최대 3개)";
   $("peerStatus").textContent = "";
 
+  // compare 상태
+  const cs = $("compareStatus");
+  if (cs) cs.textContent = "";
+
   lastBaseRow = null;
   lastTicker = null;
+
+  syncCompareButtons();
 }
 
 function renderSingle(d) {
@@ -112,6 +127,8 @@ function renderSingle(d) {
   $("pbr").textContent = fmt(d.pbr);
   $("ev").textContent = fmt(d.ev_ebitda);
   $("eps").textContent = fmt(d.eps);
+
+  syncCompareButtons();
 }
 
 function renderSuggestions(list) {
@@ -275,6 +292,7 @@ async function search() {
     $("hint").textContent = `조회 실패: ${e.message}`;
   } finally {
     isLoading = false;
+    syncCompareButtons();
   }
 }
 
@@ -318,6 +336,165 @@ async function loadPeersBtn() {
   $("peerStatus").textContent = "완료";
 }
 
+/* =========================
+   compare box (localStorage)
+========================= */
+function loadCompare() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    compareTickers = Array.isArray(arr) ? arr.filter(Boolean) : [];
+  } catch {
+    compareTickers = [];
+  }
+}
+
+function saveCompare() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(compareTickers));
+  } catch {}
+}
+
+function inCompare(t) {
+  return compareTickers.includes(t);
+}
+
+function syncCompareButtons() {
+  const addBtn = $("addToCompareBtn");
+  const clearBtn = $("clearCompareBtn");
+
+  if (addBtn) {
+    if (!lastTicker) {
+      addBtn.disabled = true;
+      addBtn.textContent = "비교함에 추가";
+    } else if (inCompare(lastTicker)) {
+      addBtn.disabled = true;
+      addBtn.textContent = "이미 비교함에 있음";
+    } else if (compareTickers.length >= MAX_COMPARE) {
+      addBtn.disabled = true;
+      addBtn.textContent = `비교함 가득참(${MAX_COMPARE})`;
+    } else {
+      addBtn.disabled = false;
+      addBtn.textContent = "비교함에 추가";
+    }
+  }
+
+  if (clearBtn) clearBtn.disabled = compareTickers.length === 0;
+}
+
+function renderCompareChips() {
+  const wrap = $("compareChips");
+  if (!wrap) return;
+
+  wrap.innerHTML = compareTickers
+    .map((t) => `<button type="button" class="chip" data-ticker="${t}">${t}</button>`)
+    .join("");
+
+  wrap.querySelectorAll(".chip[data-ticker]").forEach((b) => {
+    b.addEventListener("click", () => {
+      $("q").value = b.dataset.ticker;
+      search();
+    });
+  });
+}
+
+function renderCompareTable(rows) {
+  const tbody = $("compareTable").querySelector("tbody");
+  tbody.innerHTML = rows
+    .map((d) => `
+      <tr>
+        <td>${d.ticker}</td>
+        <td>${d.name}</td>
+        <td class="num">${fmt(d.per)}</td>
+        <td class="num">${fmt(d.pbr)}</td>
+        <td class="num">${fmt(d.ev_ebitda)}</td>
+        <td class="num">${fmt(d.eps)}</td>
+        <td class="num">
+          <button type="button" class="mini" data-action="view" data-ticker="${d.ticker}">보기</button>
+          <button type="button" class="mini danger" data-action="remove" data-ticker="${d.ticker}">삭제</button>
+        </td>
+      </tr>
+    `)
+    .join("");
+
+  tbody.querySelectorAll('button[data-action="view"]').forEach((b) => {
+    b.addEventListener("click", () => {
+      $("q").value = b.dataset.ticker;
+      search();
+    });
+  });
+
+  tbody.querySelectorAll('button[data-action="remove"]').forEach((b) => {
+    b.addEventListener("click", async () => {
+      const t = b.dataset.ticker;
+      compareTickers = compareTickers.filter((x) => x !== t);
+      saveCompare();
+      await refreshCompareUI();
+      syncCompareButtons();
+    });
+  });
+}
+
+async function refreshCompareUI() {
+  const sec = $("compare");
+  if (!sec) return;
+
+  if (!compareTickers.length) {
+    sec.classList.add("hidden");
+    return;
+  }
+
+  sec.classList.remove("hidden");
+  renderCompareChips();
+
+  const status = $("compareStatus");
+  if (status) status.textContent = "비교함 불러오는 중...";
+
+  const results = await Promise.allSettled(compareTickers.map((t) => fetchFundamentals(t)));
+
+  const rows = results.map((r, i) => {
+    if (r.status === "fulfilled") return r.value;
+    return { ticker: compareTickers[i], name: "(조회 실패)", per: null, pbr: null, ev_ebitda: null, eps: null };
+  });
+
+  renderCompareTable(rows);
+
+  if (status) status.textContent = "";
+}
+
+async function addCurrentToCompare() {
+  if (!lastTicker) return;
+  const status = $("compareStatus");
+
+  if (inCompare(lastTicker)) return;
+
+  if (compareTickers.length >= MAX_COMPARE) {
+    if (status) status.textContent = `비교함은 최대 ${MAX_COMPARE}개까지입니다.`;
+    return;
+  }
+
+  compareTickers.push(lastTicker);
+  saveCompare();
+  syncCompareButtons();
+  await refreshCompareUI();
+  if (status) status.textContent = "";
+}
+
+async function clearCompare() {
+  compareTickers = [];
+  saveCompare();
+  syncCompareButtons();
+
+  const sec = $("compare");
+  if (sec) sec.classList.add("hidden");
+
+  const status = $("compareStatus");
+  if (status) status.textContent = "";
+}
+
+/* =========================
+   typing suggestions
+========================= */
 let debounceTimer = null;
 function onType() {
   const q = $("q").value.trim();
@@ -359,14 +536,20 @@ function onType() {
 }
 
 /* =========================
-   이벤트 바인딩 + suggestions 선택 (pointerdown으로 안정화)
+   이벤트 바인딩 + suggestions 선택 (pointerdown)
 ========================= */
 document.addEventListener("DOMContentLoaded", () => {
   // 백그라운드 로딩
   loadPeers();
   loadKrMap();
 
+  // compare init
+  loadCompare();
+  syncCompareButtons();
+  refreshCompareUI();
+
   $("btn").addEventListener("click", search);
+
   $("q").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -376,8 +559,13 @@ document.addEventListener("DOMContentLoaded", () => {
       $("suggestions").innerHTML = "";
     }
   });
+
   $("q").addEventListener("input", onType);
+
   $("loadPeersBtn").addEventListener("click", loadPeersBtn);
+
+  $("addToCompareBtn")?.addEventListener("click", addCurrentToCompare);
+  $("clearCompareBtn")?.addEventListener("click", clearCompare);
 
   const sug = $("suggestions");
   sug.addEventListener(
@@ -418,6 +606,7 @@ document.addEventListener("DOMContentLoaded", () => {
           $("hint").textContent = `조회 실패: ${err.message}`;
         } finally {
           isLoading = false;
+          syncCompareButtons();
         }
         return;
       }
