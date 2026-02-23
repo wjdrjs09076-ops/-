@@ -626,25 +626,126 @@ document.addEventListener("DOMContentLoaded", () => {
     { capture: true }
   );
 });
-// URL 파라미터로 티커 자동 검색
-window.addEventListener("DOMContentLoaded", function () {
+// ===============================
+// URL 파라미터(q/ticker)로 자동 검색 트리거
+// main.js 맨 아래에 붙여넣기
+// ===============================
+(() => {
   const params = new URLSearchParams(window.location.search);
-  const ticker = params.get("q") || params.get("ticker");
+  const raw = (params.get("q") || params.get("ticker") || "").trim();
+  if (!raw) return;
 
-  if (!ticker) return;
+  const TICKER = raw.toUpperCase();
 
-  const input = document.querySelector("input[type='text']");
-  if (!input) return;
+  const log = (...args) => console.log("[auto-q]", ...args);
 
-  input.value = ticker.toUpperCase();
+  function findBestInput() {
+    const inputs = Array.from(document.querySelectorAll("input"));
+    if (!inputs.length) return null;
 
-  // 검색 함수가 있다면 직접 호출
-  if (typeof searchCompany === "function") {
-    searchCompany();
-  } 
-  // 검색 버튼이 있다면 클릭
-  else {
-    const btn = document.querySelector("button");
-    btn?.click();
+    // 우선순위: id/name/placeholder에 ticker/symbol/search 같은 단어가 들어간 input
+    const prefer = inputs.find((el) => {
+      const id = (el.id || "").toLowerCase();
+      const name = (el.name || "").toLowerCase();
+      const ph = (el.placeholder || "").toLowerCase();
+      return (
+        id.includes("ticker") ||
+        id.includes("symbol") ||
+        id.includes("search") ||
+        name.includes("ticker") ||
+        name.includes("symbol") ||
+        name.includes("search") ||
+        ph.includes("ticker") ||
+        ph.includes("symbol") ||
+        ph.includes("search") ||
+        ph.includes("티커") ||
+        ph.includes("종목")
+      );
+    });
+
+    // 아니면 text/search 타입 중 첫 번째
+    const fallback =
+      inputs.find((el) => ["text", "search"].includes((el.type || "").toLowerCase())) ||
+      inputs[0];
+
+    return prefer || fallback;
   }
-});
+
+  function findSearchButton() {
+    const buttons = Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit']"));
+    if (!buttons.length) return null;
+
+    const prefer = buttons.find((el) => {
+      const text = (el.innerText || el.value || "").toLowerCase();
+      const id = (el.id || "").toLowerCase();
+      const cls = (el.className || "").toLowerCase();
+      return (
+        text.includes("검색") ||
+        text.includes("search") ||
+        text.includes("조회") ||
+        text.includes("compare") ||
+        text.includes("비교") ||
+        id.includes("search") ||
+        id.includes("query") ||
+        cls.includes("search") ||
+        cls.includes("query")
+      );
+    });
+
+    return prefer || null;
+  }
+
+  function dispatchInputEvents(inputEl) {
+    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Enter 키로 검색이 걸린 경우 대비
+    inputEl.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 })
+    );
+    inputEl.dispatchEvent(
+      new KeyboardEvent("keyup", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 })
+    );
+  }
+
+  function tryRunOnce() {
+    const input = findBestInput();
+    if (!input) return false;
+
+    input.focus();
+    input.value = TICKER;
+    dispatchInputEvents(input);
+
+    const btn = findSearchButton();
+    if (btn) {
+      btn.click();
+      log("clicked button:", btn);
+      return true;
+    }
+
+    // 버튼 못 찾았으면 form submit 시도
+    const form = input.closest("form");
+    if (form) {
+      form.requestSubmit?.();
+      form.submit?.();
+      log("submitted form");
+      return true;
+    }
+
+    // 여기까지 왔으면 UI 구조가 특이한 케이스
+    log("input found but no button/form found. input:", input);
+    return true; // 값은 넣었으니 true로 처리
+  }
+
+  // 요소가 렌더링/리스너 부착되기 전일 수 있어서 재시도 루프
+  let tries = 0;
+  const maxTries = 60; // 약 6초(100ms 간격)
+  const timer = setInterval(() => {
+    tries += 1;
+    const ok = tryRunOnce();
+    if (ok || tries >= maxTries) {
+      clearInterval(timer);
+      log("done. ticker=", TICKER, "tries=", tries, "ok=", ok);
+    }
+  }, 100);
+})();
