@@ -626,3 +626,25 @@ document.addEventListener("DOMContentLoaded", () => {
     { capture: true }
   );
 });
+// URL 파라미터로 티커 자동 검색
+window.addEventListener("DOMContentLoaded", function () {
+  const params = new URLSearchParams(window.location.search);
+  const ticker = params.get("q") || params.get("ticker");
+
+  if (!ticker) return;
+
+  const input = document.querySelector("input[type='text']");
+  if (!input) return;
+
+  input.value = ticker.toUpperCase();
+
+  // 검색 함수가 있다면 직접 호출
+  if (typeof searchCompany === "function") {
+    searchCompany();
+  } 
+  // 검색 버튼이 있다면 클릭
+  else {
+    const btn = document.querySelector("button");
+    btn?.click();
+  }
+});
